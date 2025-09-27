@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Maze Decrypt Game — Collect Clues & Crack the Code (game)</title>
+<style>
+  :root {
+    --bg: #0b1020;
+    --wall: #1f2a44;
+    --path: #dfe7ff;
+    --player: #ffcc00;
+    --token: #22c1c3;
+    --hud: rgba(255,255,255,0.06);
+  }
+  html,body{height:100%;margin:0;font-family:Inter,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial;}
+  body{
+    display:flex;flex-direction:row;gap:20px;padding:20px;background:linear-gradient(180deg,#071026 0%, #021021 100%);color:#e6eef8;
+  }
+  .left{
+    width:720px; background:linear-gradient(180deg,var(--hud), transparent);padding:14px;border-radius:12px;box-shadow:0 6px 30px rgba(0,0,0,0.6);
+  }
+  canvas{display:block;background:var(--bg);border-radius:6px;margin:0 auto;box-shadow:0 6px 24px rgba(0,0,0,0.6);}
+  .controls{display:flex;gap:8px;margin-top:12px;align-items:center;flex-wrap:wrap;}
+  .controls label{font-size:13px;opacity:0.9}
+  .controls select, .controls button, .controls input[type=number]{
+    padding:8px 10px;border-radius:8px;border:none;background:#0d1528;color:#e6eef8;
+  }
+  .right{
+    width:360px; padding:14px;border-radius:12px;background:linear-gradient(180deg, rgba(255,255,255,0.03), transparent);box-shadow:0 6px 30px rgba(0,0,0,0.6);
+  }
+  h1{margin:4px 0 10px;font-size:18px}
+  p.small{margin:8px 0 12px;color:#bcd2ff;font-size:13px}
+  .info{background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);padding:10px;border-radius:8px;font-size:13px}
+  .hint{margin-top:10px;padding:10px;border-radius:8px;background:#07122a;color:#adf3ff;font-family:monospace}
+  .tokens {display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .token-box{background:#0b1530;padding:8px;border-radius:8px;font-family:monospace;font-size:13px;color:#9be7ff}
+  .input-row{display:flex;gap:8px;margin-top:12px}
+  input[type=text]{flex:1;padding:10px;border-radius:8px;border:none;background:#07122a;color:#e6eef8;font-family:monospace}
+  button.primary{background:#1f8fff;border:none;padding:10px 12px;border-radius:8px;color:white;cursor:pointer}
+  .small-muted{color:#9fb7e6;font-size:13px;margin-top:8px}
+  footer{position:fixed;left:20px;bottom:20px;color:#7f9ccf;font-size:12px}
+  .success{background:#06280f;color:#adffbe;padding:10px;border-radius:8px;margin-top:10px;font-weight:600}
+  .failure{background:#2a071b;color:#ffacb2;padding:10px;border-radius:8px;margin-top:10px;font-weight:600}
+  .kbd {background:#06263a;padding:4px 8px;border-radius:6px;font-family:monospace}
+</style>
+</head>
+<body>
+
+<div class="left">
+  <h1>Maze Decrypt Game</h1>
+  <p class="small">Collect all tokens in the maze. Each token gives a small hint. After collecting them, you'll receive an <em>encrypted fictional session id</em>. Use the hints to decrypt it and enter the password to win.</p>
+
+  <canvas id="mazeCanvas" width="640" height="640"></canvas>
+
+  <div class="controls">
+    <label>Size:</label>
+    <select id="sizeSelect">
+      <option value="11" selected>Small (11×11)</option>
+      <option value="21">Medium (21×21)</option>
+      <option value="31">Large (31×31)</option>
+    </select>
+
+    <label>Tokens:</label>
+    <input id="tokenCount" type="number" min="1" max="9" value="3" style="width:64px"/>
+
+    <button id="regenBtn" class="primary">Generate Maze</button>
+    <button id="resetBtn">Reset Player</button>
+
+    <div style="margin-left:auto;font-size:13px;color:#9fb7e6">Move: <span class="kbd">arrows / WASD</span></div>
+  </div>
+</div>
+
+<div class="right">
+  <div class="info">
+    <div><strong>Progress</strong></div>
+    <div class="tokens" id="tokensArea"></div>
+    <div class="small-muted">Collect all tokens to reveal the encrypted session id.</div>
+
+    <div id="encryptSection" style="margin-top:12px;display:none">
+      <div style="font-size:12px;color:#bcd2ff">Encrypted session id:</div>
+      <div class="hint" id="encryptedBox" aria-live="polite"></div>
+
+      <div style="margin-top:8px;font-size:12px;color:#bcd2ff">Enter decrypted session id:</div>
+      <div class="input-row">
+        <input id="guessInput" type="text" placeholder="type decrypted id here" autocomplete="off" />
+        <button id="submitBtn" class="primary">Submit</button>
+      </div>
+      <div id="resultMessage"></div>
+    </div>
+  </div>
+
+  <div style="margin-top:16px">
+    <strong>Hints system</strong>
+    <p class="small">Each token contains one-digit hint. The fictional code was encrypted with a Caesar cipher whose shift equals the sum of digits shown in collected tokens. Game only — not for real passwords.</p>
+    <div class="small-muted">Example: if tokens show 2 + 3 + 1 = shift 6, and encrypted text is "nkx", real secret after shifting back by 6 is "here".</div>
+  </div>
+
+  <div style="margin-top:16px">
+    <strong>Options & Variations</strong>
+    <ul style="padding-left:18px;margin:6px 0 0 0;color:#bcd2ff">
+      <li>Change token count or maze size for difficulty.</li>
+      <li>Modify the code or change to another symmetric cipher in the code for variety.</li>
+    </ul>
+  </div>
+
+  <div style="margin-top:16px;font-size:12px;color:#ffddb3">
+    <strong>Note:</strong> This is a safe puzzle game. Do not use this to attempt to access or bypass real systems.
+  </div>
+</div>
+
+<footer>Made with ♥ — collect tokens, decrypt, and win!</footer>
+
+<script>
+/* Maze + game logic */
+(() => {
+  const canvas = document.getElementById('mazeCanvas');
+  const ctx = canvas.getContext('2d');
+  const regenBtn = document.getElementById('regenBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const sizeSelect = document.getElementById('sizeSelect');
+  const tokenCountInput = document.getElementById('tokenCount');
+  const tokensArea = document.getElementById('tokensArea');
+  const encryptSection = document.getElementById('encryptSection');
+  const encryptedBox = document.getElementById('encryptedBox');
+  const guessInput = document.getElementById('guessInput');
+  const submitBtn = document.getElementById('submitBtn');
+  const resultMessage = document.getElementById('resultMessage');
+
+  let cols = 11;
+  let rows = 11;
+  let grid, stack, cellSize;
+  let player = {x:1,y:1};
+  let tokens = []; // positions & digits
+  let collected = [];
+  let encryptedSecret = '';
+  let realSecret = '';
+  let shiftValue = 0;
+  let tokenCount = 3;
+
+  function makeGrid(c, r) {
+    cols = c; rows = r;
+    grid = [];
+    for (let y=0;y<rows;y++){
+      let row = [];
+      for (let x=0;x<cols;x++){
+        row.push({x,y,visited:false,walls:[true,true,true,true]}); // top,right,bottom,left
+      }
+      grid.push(row);
+    }
+  }
+
+  function idx(x,y){ if(x<0||y<0||x>=cols||y>=rows) return null; return grid[y][x]; }
+
+  function neighbors(cell) {
+    const N = [];
+    const {x,y} = cell;
+    const above = idx(x,y-1);
+    const right = idx(x+1,y);
+    const below = idx(x,y+1);
+    const left = idx(x-1,y);
+    if (above && !above.visited) N.push([above,0]);
+    if (right && !right.visited) N.push([right,1]);
+    if (below && !below.visited) N.push([below,2]);
+    if (left && !left.visited) N.push([left,3]);
+    return N;
+  }
+
+  function removeWalls(a,b,dir){
+    // dir indicates b relative to a: 0 top,1 right,2 bottom,3 left
+    a.walls[dir] = false;
+    b.walls[(dir+2)%4] = false;
+  }
+
+  function generateMaze() {
+    // DFS backtracker
+    for (let y=0;y<rows;y++) for (let x=0;x<cols;x++) grid[y][x].visited=false;
+    const stack = [];
+    const start = grid[1][1];
+    start.visited = true;
+    stack.push(start);
+
+    while (stack.length){
+      const current = stack[stack.length-1];
+      const n = neighbors(current);
+      if (n.length > 0) {
+        const [next,dir] = n[Math.floor(Math.random()*n.length)];
+        next.visited = true;
+        removeWalls(current,next,dir);
+        stack.push(next);
+      } else {
+        stack.pop();
+      }
+    }
+    // carve entrance and exit
+    if (grid[1] && grid[1][0]) {
+      // ensure player start is open
+    }
+  }
+
+  function placeTokens(k) {
+    tokens = [];
+    const possible = [];
+    for (let y=1;y<rows-1;y++){
+      for (let x=1;x<cols-1;x++){
+        // allow placing on path cells (not enclosed by walls on all 4 sides)
+        const cell = grid[y][x];
+        if (!cell) continue;
+        // consider mostly interior spaces (odd coords often used for cells)
+        // we'll allow if there's at least one open wall (so it's reachable)
+        const open = cell.walls.filter(w=>!w).length;
+        if (open>0) possible.push(cell);
+      }
+    }
+    shuffleArray(possible);
+    let placed=0;
+    for (let i=0;i<possible.length && placed<k;i++){
+      const c = possible[i];
+      // avoid player's start
+      if (c.x===1 && c.y===1) continue;
+      // avoid duplicates
+      if (tokens.some(t=>t.x===c.x && t.y===c.y)) continue;
+      tokens.push({x:c.x,y:c.y,digit: (Math.floor(Math.random()*9)+1) }); // 1..9
+      placed++;
+    }
+  }
+
+  function shuffleArray(a){ for(let i=a.length-1;i>0;i--){ const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]]; } }
+
+  function draw() {
+    // compute cell size
+    const pad = 6;
+    const avail = Math.min(canvas.width, canvas.height) - pad*2;
+    const csx = Math.floor(avail/cols);
+    const csy = Math.floor(avail/rows);
+    cellSize = Math.max(6, Math.min(csx,csy));
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    const ox = (canvas.width - cellSize*cols)/2;
+    const oy = (canvas.height - cellSize*rows)/2;
+
+    // draw walls
+    ctx.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--wall').trim();
+    ctx.lineWidth = Math.max(2, Math.floor(cellSize/6));
+    for (let y=0;y<rows;y++){
+      for (let x=0;x<cols;x++){
+        const c = grid[y][x];
+        const px = ox + x*cellSize;
+        const py = oy + y*cellSize;
+        // draw wall segments as filled rects for crisp look
+        if (c.walls[0]) { ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(px,py,cellSize,Math.max(2,ctx.lineWidth)); }
+        if (c.walls[1]) { ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(px+cellSize-Math.max(2,ctx.lineWidth),py,Math.max(2,ctx.lineWidth),cellSize); }
+        if (c.walls[2]) { ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(px,py+cellSize-Math.max(2,ctx.lineWidth),cellSize,Math.max(2,ctx.lineWidth)); }
+        if (c.walls[3]) { ctx.fillStyle = ctx.strokeStyle; ctx.fillRect(px,py,Math.max(2,ctx.lineWidth),cellSize); }
+      }
+    }
+
+    // draw tokens
+    for (const t of tokens){
+      const px = ox + t.x*cellSize + cellSize/2;
+      const py = oy + t.y*cellSize + cellSize/2;
+      ctx.beginPath();
+      ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--token').trim();
+      ctx.arc(px,py,cellSize*0.28,0,Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle = '#021827';
+      ctx.font = `${Math.max(10,Math.floor(cellSize*0.36))}px monospace`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(t.digit, px, py);
+    }
+
+    // draw player
+    const px = ox + player.x*cellSize + cellSize/2;
+    const py = oy + player.y*cellSize + cellSize/2;
+    ctx.beginPath();
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--player').trim();
+    ctx.arc(px,py,cellSize*0.32,0,Math.PI*2);
+    ctx.fill();
+
+  }
+
+  function collectAtPlayer() {
+    const idx = tokens.findIndex(t => t.x===player.x && t.y===player.y);
+    if (idx>=0) {
+      const t = tokens[idx];
+      collected.push(t.digit);
+      tokens.splice(idx,1);
+      updateTokensUI();
+      if (tokens.length===0) {
+        revealEncrypted();
+      }
+    }
+    draw();
+  }
+
+  function updateTokensUI() {
+    tokensArea.innerHTML = '';
+    for (const d of collected){
+      const b = document.createElement('div'); b.className='token-box'; b.textContent = d; tokensArea.appendChild(b);
+    }
+    // show placeholders for uncollected tokens as dots
+    const remaining = tokenCount - collected.length;
+    for (let i=0;i<remaining;i++){
+      const b = document.createElement('div'); b.className='token-box'; b.textContent = '•'; b.style.opacity = 0.45; tokensArea.appendChild(b);
+    }
+    if (collected.length===tokenCount) {
+      // show encrypted
+      revealEncrypted();
+    }
+  }
+
+  function randomSecret() {
+    // produce a random "session id" like "GOLD-42-ROVER" but simpler letters+digits
+    // Keep short to make game manageable
+    const parts = [];
+    const words = ['EMBER','DRIFT','NOVA','ORBIT','BLAZE','QUARK','TIDE','PHASE','VECTOR','ATLAS'];
+    parts.push(words[Math.floor(Math.random()*words.length)]);
+    parts.push(String(Math.floor(Math.random()*90)+10)); // two-digit
+    parts.push(words[Math.floor(Math.random()*words.length)]);
+    return parts.join('-');
+  }
+
+  function caesarEncrypt(str, shift) {
+    // only shift letters A-Z; leave digits and dash intact
+    const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    return str.split('').map(ch=>{
+      const up = ch.toUpperCase();
+      const idx = A.indexOf(up);
+      if (idx>=0){
+        const n = (idx + shift)%26;
+        const res = A[n];
+        // preserve original case
+        return (ch===ch.toLowerCase()) ? res.toLowerCase() : res;
+      } else return ch;
+    }).join('');
+  }
+
+  function revealEncrypted() {
+    // compute shift as sum of collected digits
+    shiftValue = collected.reduce((a,b)=>a+b,0) % 26;
+    realSecret = randomSecret();
+    encryptedSecret = caesarEncrypt(realSecret, shiftValue);
+    encryptedBox.textContent = encryptedSecret;
+    encryptSection.style.display = 'block';
+    resultMessage.innerHTML = '';
+    guessInput.value = '';
+    guessInput.focus();
+  }
+
+  function trySubmit() {
+    const guess = guessInput.value.trim();
+    if (!guess) return;
+    if (guess.toUpperCase() === realSecret.toUpperCase()) {
+      resultMessage.innerHTML = '<div class="success">Correct! You decrypted the fictional session id. 🎉</div>';
+    } else {
+      resultMessage.innerHTML = '<div class="failure">Not correct — try again. Use the digits you collected as hints for the Caesar shift.</div>';
+    }
+  }
+
+  function regenerate() {
+    const size = parseInt(sizeSelect.value,10);
+    const k = Math.max(1, Math.min(9, parseInt(tokenCountInput.value,10)||3));
+    tokenCount = k;
+    makeGrid(size, size);
+    generateMaze();
+    placeTokens(k);
+    player = {x:1,y:1};
+    collected = [];
+    encryptSection.style.display = 'none';
+    updateTokensUI();
+    draw();
+  }
+
+  // movement logic: allow movement between adjacent cells only if wall not present
+  function movePlayer(dx,dy) {
+    const nx = player.x + dx;
+    const ny = player.y + dy;
+    if (nx<0||ny<0||nx>=cols||ny>=rows) return;
+    const cur = grid[player.y][player.x];
+    let dir = -1;
+    if (dx===0 && dy===-1) dir = 0;
+    if (dx===1 && dy===0) dir = 1;
+    if (dx===0 && dy===1) dir = 2;
+    if (dx===-1 && dy===0) dir = 3;
+    if (dir===-1) return;
+    if (!cur.walls[dir]) {
+      player.x = nx; player.y = ny;
+      collectAtPlayer();
+    }
+  }
+
+  // key handling
+  window.addEventListener('keydown', (e)=>{
+    if (['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
+      if (e.key === 'Enter') { trySubmit(); e.preventDefault(); }
+      return;
+    }
+    if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') movePlayer(0,-1);
+    if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') movePlayer(0,1);
+    if (e.key === 'ArrowLeft' || e.key === 'a' || e.key === 'A') movePlayer(-1,0);
+    if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') movePlayer(1,0);
+    draw();
+  });
+
+  regenBtn.addEventListener('click', ()=> regenerate());
+  resetBtn.addEventListener('click', ()=>{
+    player = {x:1,y:1};
+    collected = [];
+    // re-place tokens without re-generating maze
+    placeTokens(tokenCount);
+    updateTokensUI();
+    encryptSection.style.display='none';
+    draw();
+  });
+  submitBtn.addEventListener('click', trySubmit);
+  guessInput.addEventListener('keydown', (e)=>{ if (e.key==='Enter') trySubmit(); });
+
+  // init canvas size responsive
+  function adaptCanvas(){
+    const w = Math.min(720, Math.max(480, window.innerWidth * 0.45));
+    const h = w;
+    canvas.width = w;
+    canvas.height = h;
+    draw();
+  }
+  window.addEventListener('resize', adaptCanvas);
+
+  // first run
+  makeGrid(cols,rows);
+  generateMaze();
+  placeTokens(tokenCount);
+  updateTokensUI();
+  adaptCanvas();
+  draw();
+
+})();
+</script>
+
+</body>
+</html>
