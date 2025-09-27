@@ -2,6 +2,7 @@
 
 **Maze Decrypt Game** is a web-based puzzle where players navigate procedurally generated mazes, collect tokens with hint digits, and decrypt a fictional session ID using a Caesar cipher.
 
+### To play click on ➡️ [Maze-Decrypt-Game](https://devang-09.github.io/Maze-Decrypt-Game/)
 ---
 
 ## Features (Current)
